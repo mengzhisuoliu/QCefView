@@ -215,35 +215,50 @@ QCefView::paintEvent(QPaintEvent* event)
   qreal scaleFactor = devicePixelRatio();
   float x, y, w, h = 0;
 
-  // transform pop-up rect to widget coordinate system
-  x = d->osr.qPopupRect_.x() / scaleFactor;
-  y = d->osr.qPopupRect_.y() / scaleFactor;
-  w = d->osr.qPopupRect_.width() / scaleFactor;
-  h = d->osr.qPopupRect_.height() / scaleFactor;
-  QRect popupRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
-
   // perform the painting
   {
-    // paint cef view
     QMutexLocker lock(&(d->osr.qCefFramePaintLock_));
+
+    // transform pop-up rect to widget coordinate system
+    x = d->osr.qPopupRect_.x() / scaleFactor;
+    y = d->osr.qPopupRect_.y() / scaleFactor;
+    w = d->osr.qPopupRect_.width() / scaleFactor;
+    h = d->osr.qPopupRect_.height() / scaleFactor;
+    QRectF popupRect{ x, y, (w), (h) };
+
+    // re-paint dirty regions of main view
     for (auto& dirtyRect : event->region()) {
       x = dirtyRect.x() * scaleFactor;
       y = dirtyRect.y() * scaleFactor;
       w = dirtyRect.width() * scaleFactor;
       h = dirtyRect.height() * scaleFactor;
-      painter.drawImage(dirtyRect, d->osr.qCefViewFrame_, QRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) });
+      painter.drawImage(dirtyRect,             //
+                        d->osr.qCefViewFrame_, //
+                        QRectF{ x, y, w, h }   //
+      );
 
+      // re-paint only dirty regions of pop-up view
       if (d->osr.showPopup_) {
-        QRect destRect = popupRect.intersected(dirtyRect);
+        QRectF destRect = popupRect.intersected(dirtyRect);
         if (!destRect.isEmpty()) {
           x = destRect.x() * scaleFactor - d->osr.qPopupRect_.x();
           y = destRect.y() * scaleFactor - d->osr.qPopupRect_.y();
           w = destRect.width() * scaleFactor;
           h = destRect.height() * scaleFactor;
-          painter.drawImage(destRect, d->osr.qCefPopupFrame_, QRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) });
+          painter.drawImage(destRect,               //
+                            d->osr.qCefPopupFrame_, //
+                            QRectF{ x, y, w, h }    //
+          );
         }
       }
     }
+
+    // re-paint entire pop-up view
+    // if (d->osr.showPopup_) {
+    //  painter.drawImage(popupRect,             //
+    //                    d->osr.qCefPopupFrame_ //
+    //  );
+    //}
   }
 #endif
 

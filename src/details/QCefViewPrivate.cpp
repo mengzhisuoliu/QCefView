@@ -352,6 +352,7 @@ QCefViewPrivate::onOsrImeCursorRectChanged(const QRect& rc)
 void
 QCefViewPrivate::onOsrShowPopup(bool show)
 {
+  QMutexLocker lock(&(osr.qCefFramePaintLock_));
   osr.showPopup_ = show;
 
   // clear the previous pop-up frame data if exist
@@ -362,13 +363,14 @@ QCefViewPrivate::onOsrShowPopup(bool show)
 void
 QCefViewPrivate::onOsrResizePopup(const QRect& rc)
 {
-  float x, y, w, h = 0;
+  QMutexLocker lock(&(osr.qCefFramePaintLock_));
   qreal scaleFactor = q_ptr->devicePixelRatio();
-  x = rc.x() * scaleFactor;
-  y = rc.y() * scaleFactor;
-  w = rc.width() * scaleFactor;
-  h = rc.height() * scaleFactor;
-  osr.qPopupRect_ = { qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
+  osr.qPopupRect_ = QRect{
+    qFloor(rc.x() * scaleFactor),    //
+    qFloor(rc.y() * scaleFactor),    //
+    qCeil(rc.width() * scaleFactor), //
+    qCeil(rc.height() * scaleFactor) //
+  };
 }
 
 void
@@ -453,8 +455,14 @@ QCefViewPrivate::onOsrUpdatePopupFrame(const QImage& frame, const QRegion& regio
     // full change, just copy the new frame
     osr.qCefPopupFrame_ = frame.copy();
 
+    // transform to widget rect and add it to the dirty region
+    x = (osr.qPopupRect_.x()) / scaleFactor;
+    y = (osr.qPopupRect_.y()) / scaleFactor;
+    w = osr.qPopupRect_.width() / scaleFactor;
+    h = osr.qPopupRect_.height() / scaleFactor;
+
     // the entire pop-up rect needs to be update
-    widgetRegion += osr.qPopupRect_;
+    widgetRegion += QRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
   }
   emit updateOsrFrame(widgetRegion);
 }
