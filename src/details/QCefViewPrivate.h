@@ -79,17 +79,12 @@ public:
     /// <summary>
     ///
     /// </summary>
-    QMutex qViewPaintLock_;
+    QMutex qCefFramePaintLock_;
 
     /// <summary>
     ///
     /// </summary>
     QImage qCefViewFrame_;
-
-    /// <summary>
-    ///
-    /// </summary>
-    QMutex qPopupPaintLock_;
 
     /// <summary>
     ///
@@ -161,8 +156,10 @@ public slots:
 
   void onOsrResizePopup(const QRect& rc);
 
+  void onUpdateOsrFrame(const QRegion& region);
+
 signals:
-  void updateOsrFrame();
+  void updateOsrFrame(const QRegion& region);
 
 protected:
   void onOsrUpdateViewFrame(const QImage& frame, const QRegion& region);

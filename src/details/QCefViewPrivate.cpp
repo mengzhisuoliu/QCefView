@@ -172,11 +172,6 @@ QCefViewPrivate::onCefMainBrowserCreated(CefRefPtr<CefBrowser>& browser, QWindow
   pCefBrowser_ = browser;
 
 #if defined(CEF_USE_OSR)
-  // notify the visibility and size
-  pCefBrowser_->GetHost()->WasHidden(!q_ptr->isVisible());
-  pCefBrowser_->GetHost()->WasResized();
-  connect(this, SIGNAL(updateOsrFrame()), q_ptr, SLOT(update()));
-
   // monitor the screenChanged signal from the top-level window
   disconnect(this, SLOT(onViewScreenChanged(QScreen*)));
   if (q_ptr->window()->windowHandle()) {
@@ -186,6 +181,17 @@ QCefViewPrivate::onCefMainBrowserCreated(CefRefPtr<CefBrowser>& browser, QWindow
             SLOT(onViewScreenChanged(QScreen*)) //
     );
   }
+
+  // connect frame update sig/slot
+  connect(this,                                   //
+          SIGNAL(updateOsrFrame(const QRegion&)), //
+          this,                                   //
+          SLOT(onUpdateOsrFrame(const QRegion&))  //
+  );
+
+  // notify the visibility and size
+  pCefBrowser_->GetHost()->WasHidden(!q_ptr->isVisible());
+  pCefBrowser_->GetHost()->WasResized();
 #else
   // create QWidget from cef browser widow, this will re-parent the CEF browser window
   QWidget* browserWidget = QWidget::createWindowContainer(
@@ -356,7 +362,24 @@ QCefViewPrivate::onOsrShowPopup(bool show)
 void
 QCefViewPrivate::onOsrResizePopup(const QRect& rc)
 {
-  osr.qPopupRect_ = rc;
+  float x, y, w, h = 0;
+  qreal scaleFactor = q_ptr->devicePixelRatio();
+  x = rc.x() * scaleFactor;
+  y = rc.y() * scaleFactor;
+  w = rc.width() * scaleFactor;
+  h = rc.height() * scaleFactor;
+  osr.qPopupRect_ = { qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
+}
+
+void
+QCefViewPrivate::onUpdateOsrFrame(const QRegion& region)
+{
+  Q_Q(QCefView);
+
+  if (region.isEmpty())
+    q->update();
+  else
+    q->update(region);
 }
 
 void
@@ -372,18 +395,31 @@ QCefViewPrivate::onOsrUpdateViewFrame(const QImage& frame, const QRegion& region
   updateDurationTimer.start();
 #endif
 
+  QRegion widgetRegion;
+  float x, y, w, h = 0;
+  qreal scaleFactor = q_ptr->devicePixelRatio();
+
   if (osr.qCefViewFrame_.size() == frame.size()) {
-    QMutexLocker lock(&(osr.qViewPaintLock_));
+    QMutexLocker lock(&(osr.qCefFramePaintLock_));
     // update region
     QPainter painter(&osr.qCefViewFrame_);
     for (auto& rc : region) {
+      // paint the backing store frame
       painter.drawImage(rc, frame, rc);
+
+      // transform to widget rect and add it to the dirty region
+      x = rc.x() / scaleFactor;
+      y = rc.y() / scaleFactor;
+      w = rc.width() / scaleFactor;
+      h = rc.height() / scaleFactor;
+      widgetRegion += QRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
     }
   } else {
-    QMutexLocker lock(&(osr.qViewPaintLock_));
+    QMutexLocker lock(&(osr.qCefFramePaintLock_));
+    // full change, just copy the new frame
     osr.qCefViewFrame_ = frame.copy();
   }
-  emit updateOsrFrame();
+  emit updateOsrFrame(widgetRegion);
 
 #if defined(QT_DEBUG)
   qDebug() << "===== CEF frame update duration:" << elapsedMs;
@@ -393,18 +429,34 @@ QCefViewPrivate::onOsrUpdateViewFrame(const QImage& frame, const QRegion& region
 void
 QCefViewPrivate::onOsrUpdatePopupFrame(const QImage& frame, const QRegion& region)
 {
+  QRegion widgetRegion;
+  float x, y, w, h = 0;
+  qreal scaleFactor = q_ptr->devicePixelRatio();
+
   if (osr.qCefPopupFrame_.size() == frame.size()) {
-    QMutexLocker lock(&(osr.qPopupPaintLock_));
+    QMutexLocker lock(&(osr.qCefFramePaintLock_));
     // update region
     QPainter painter(&osr.qCefPopupFrame_);
     for (auto& rc : region) {
+      // paint the backing store frame
       painter.drawImage(rc, frame, rc);
+
+      // transform to widget rect and add it to the dirty region
+      x = (osr.qPopupRect_.x() + rc.x()) / scaleFactor;
+      y = (osr.qPopupRect_.y() + rc.y()) / scaleFactor;
+      w = rc.width() / scaleFactor;
+      h = rc.height() / scaleFactor;
+      widgetRegion += QRect{ qFloor(x), qFloor(y), qCeil(w), qCeil(h) };
     }
   } else {
-    QMutexLocker lock(&(osr.qPopupPaintLock_));
+    QMutexLocker lock(&(osr.qCefFramePaintLock_));
+    // full change, just copy the new frame
     osr.qCefPopupFrame_ = frame.copy();
+
+    // the entire pop-up rect needs to be update
+    widgetRegion += osr.qPopupRect_;
   }
-  emit updateOsrFrame();
+  emit updateOsrFrame(widgetRegion);
 }
 #endif
 
