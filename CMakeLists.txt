@@ -123,7 +123,7 @@ elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
   set(USE_SANDBOX OFF CACHE BOOL "Disable sandbox on Windows" FORCE)
   add_definitions(
     -DOS_WINDOWS=1
-    -D_WIN32_WINNT=0x601
+    -D_WIN32_WINNT=0x602
   )
 
   if(USE_WIN_DCOMPOSITION)
